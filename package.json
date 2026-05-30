@@ -1,0 +1,30 @@
+{
+  "name": "metamask-smart-accounts-workshop",
+  "version": "1.0.0",
+  "description": "MetaMask Smart Accounts Kit Workshop - Build to Win the Hackathon",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "batch": "tsx src/batch.ts",
+    "paymaster": "tsx src/paymaster.ts",
+    "delegate": "tsx src/delegation/delegate.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "metamask",
+    "smart-accounts",
+    "erc-4337",
+    "account-abstraction"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@metamask/smart-accounts-kit": "^1.6.0",
+    "@types/node": "^25.9.1",
+    "dotenv": "^17.4.2",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3",
+    "viem": "^2.51.3"
+  }
+}
