@@ -27,8 +27,19 @@ export const getGasPrice = async () => {
             params: [],
         }),
     }).then(r => r.json()) as {
-        result: { fast: { maxFeePerGas: string; maxPriorityFeePerGas: string } }
+        result?: { fast: { maxFeePerGas: string; maxPriorityFeePerGas: string } }
+        error?: { code: number; message: string }
     }
+
+    if (!json.result) {
+        console.error('getGasPrice API error response:', JSON.stringify(json, null, 2))
+        throw new Error(
+            json.error
+                ? `Bundler API error ${json.error.code}: ${json.error.message}`
+                : 'Bundler returned no result. Check your BUNDLER_URL and API key in .env'
+        )
+    }
+
     return {
         maxFeePerGas: BigInt(json.result.fast.maxFeePerGas),
         maxPriorityFeePerGas: BigInt(json.result.fast.maxPriorityFeePerGas),

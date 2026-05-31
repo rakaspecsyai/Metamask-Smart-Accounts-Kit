@@ -3,7 +3,7 @@ import { parseEther } from 'viem'
 import { getOrCreateSmartAccount } from './accounts/smartAccount'
 import { bundlerClient, getGasPrice } from './config/bundler'
 
-const RECIPIENT = '0x01d961f525ee8c5a6011f275fa2b2aa9417bc8f1' as const
+const RECIPIENT = '0xA5FE0888cfa49B5479f41FD4389F0C7F3c3d7077' as const
 
 const main = async () => {
     const smartAccount = await getOrCreateSmartAccount()

@@ -14,11 +14,13 @@ import { DelegationManager } from '@metamask/delegation-abis'
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts'
 import { parseEther, encodeFunctionData } from 'viem'
 import { publicClient } from '../config/client'
-import { bundlerClient, getGasPrice } from '../config/bundler'
+import { getGasPrice, getBundlerWithPaymaster } from '../config/bundler'
+
+if (!process.env.PRIVATE_KEY) throw new Error('PRIVATE_KEY not set in .env')
 
 const main = async () => {
-    const aliceKey = generatePrivateKey()
-    const aliceEOA = privateKeyToAccount(aliceKey)
+    // Alice = akun nyata dari .env (harus sudah punya ETH di Sepolia)
+    const aliceEOA = privateKeyToAccount(process.env.PRIVATE_KEY as `0x${string}`)
     const aliceSmartAccount = await toMetaMaskSmartAccount({
         client: publicClient,
         implementation: Implementation.Hybrid,
@@ -28,6 +30,7 @@ const main = async () => {
     })
     console.log('Alice (Delegator):', aliceSmartAccount.address)
 
+    // Bob = akun sementara (delegate), tidak perlu ETH
     const bobKey = generatePrivateKey()
     const bobEOA = privateKeyToAccount(bobKey)
     const bobSmartAccount = await toMetaMaskSmartAccount({
@@ -40,32 +43,48 @@ const main = async () => {
     console.log('Bob (Delegate):', bobSmartAccount.address)
 
     const env = aliceSmartAccount.environment
+    const paymasterBundler = getBundlerWithPaymaster()
+    const gasPrice = await getGasPrice()
 
-    const caveatBuilder = createCaveatBuilder(env)
+    // Step 1: Deploy Alice's smart account on-chain
+    // Wajib dilakukan agar DelegationManager bisa verifikasi signature Alice via isValidSignature()
+    console.log('\nDeploying Alice smart account on-chain...')
+    const deployHash = await paymasterBundler.sendUserOperation({
+        account: aliceSmartAccount,
+        calls: [{ to: aliceSmartAccount.address, data: '0x', value: 0n }],
+        ...gasPrice,
+    })
+    await paymasterBundler.waitForUserOperationReceipt({ hash: deployHash })
+    console.log('Alice account deployed ✅')
+
+    // Step 2: Buat dan tanda-tangani delegation
     const delegation = createDelegation({
         environment: env,
         from: aliceSmartAccount.address,
         to: bobSmartAccount.address,
-        caveats: caveatBuilder
-            .addCaveat('allowedTargets', { targets: ['0xSpecificContractAddress' as `0x${string}`] })
-            .addCaveat('valueLte', { maxValue: parseEther('0.5') })
+        scope: {
+            type: 'nativeTokenTransferAmount',
+            maxAmount: parseEther('0.01'),
+        },
+        caveats: createCaveatBuilder(env, { allowInsecureUnrestrictedDelegation: true })
+            .addCaveat('allowedTargets', { targets: ['0x01d961f525ee8c5a6011f275fa2b2aa9417bc8f1' as `0x${string}`] })
             .build(),
-        parentPermissionContext: [],
     })
-    console.log('Delegation created')
-    console.log('  - allowedTargets: 0xSpecificContractAddress')
-    console.log('  - valueLte: 0.5 ETH')
+    console.log('\nDelegation created')
+    console.log('  - allowedTargets: 0x01d961f525ee8c5a6011f275fa2b2aa9417bc8f1')
+    console.log('  - maxAmount: 0.01 ETH')
 
     const signature = await aliceSmartAccount.signDelegation({ delegation })
     const signedDelegation = { ...delegation, signature }
-    console.log('Delegation signed')
+    console.log('Delegation signed ✅')
 
+    // Step 3: Bob meredeem delegation (mengeksekusi atas nama Alice)
     const delegationManagerAddress = env.DelegationManager
     const permissionContext = encodeDelegations([signedDelegation])
     const mode = ExecutionMode.SingleDefault
     const executionCalldata = encodeExecutionCalldata([{
         target: '0x01d961f525ee8c5a6011f275fa2b2aa9417bc8f1' as const,
-        value: parseEther('0.001'),
+        value: 0n,
         callData: '0x',
     }])
 
@@ -75,11 +94,9 @@ const main = async () => {
         args: [[permissionContext], [mode], [executionCalldata]],
     })
 
-    console.log('Bob redeems delegation...')
+    console.log('\nBob redeems delegation...')
 
-    const gasPrice = await getGasPrice()
-
-    const userOpHash = await bundlerClient.sendUserOperation({
+    const userOpHash = await paymasterBundler.sendUserOperation({
         account: bobSmartAccount,
         calls: [{
             to: delegationManagerAddress,
@@ -91,11 +108,11 @@ const main = async () => {
 
     console.log('UserOp Hash:', userOpHash)
 
-    const receipt = await bundlerClient.waitForUserOperationReceipt({
+    const receipt = await paymasterBundler.waitForUserOperationReceipt({
         hash: userOpHash,
     })
 
-    console.log('✅ Delegation redeemed! Bob executed tx on behalf of Alice.')
+    console.log('\n✅ Delegation redeemed! Bob executed tx on behalf of Alice.')
     console.log('Tx Hash:', receipt.receipt.transactionHash)
 }
 
